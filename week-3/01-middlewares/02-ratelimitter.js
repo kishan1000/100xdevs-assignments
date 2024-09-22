@@ -16,6 +16,30 @@ setInterval(() => {
     numberOfRequestsForUser = {};
 }, 1000)
 
+app.use(express.json());
+
+// handle count of users
+app.use((req, res, next) => {
+    const user = req.body['user-id'];
+    if(!numberOfRequestsForUser[user]){
+        numberOfRequestsForUser[user] = 1;
+    } else {
+        numberOfRequestsForUser[user]++;
+    }
+    next();
+});
+
+// handle what to do with user
+app.use((req, res, next) => {
+    const user = req.body['user-id'];
+    if(numberOfRequestsForUser[user] > 5){
+        return res.status(404).json({
+            "msg" : "Request per second limit reached."
+        });
+    }
+    next();
+});
+
 app.get('/user', function(req, res) {
   res.status(200).json({ name: 'john' });
 });

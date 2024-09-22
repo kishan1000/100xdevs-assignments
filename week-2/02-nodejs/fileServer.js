@@ -17,5 +17,38 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
+const filesPath = path.join(__dirname, "./files");
+
+// The get request on route GET /files
+app.get("/files", (req, res)=>{
+    fs.readdir(filesPath, (err, files)=>{
+        if(err){
+            return res.status(500).json({ message : "directory doesn't exist." });
+        }
+        res.status(200).json({ files });
+    });
+});
+
+// return content of file requested
+app.get("/file/:filename", (req, res)=>{
+    const filename = req.params.filename;
+    fs.readFile(filesPath+"/"+filename, "utf8", (err, data)=>{
+        if(err){
+            if(err.code == 'ENOENT'){
+                return res.status(404).send("File not found");
+            }
+            else{
+                console.log("Error while reading file " +filename+" "+err);
+                return res.status(500).json({ message : "Internal server error" });
+            }
+        }
+        res.status(200).send(data);
+    });
+});
+
+// All undefined routes
+app.all("*", (req, res)=>{ 
+    res.status(404).send("Route not found");
+});
 
 module.exports = app;

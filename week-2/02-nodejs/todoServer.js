@@ -46,4 +46,167 @@
   
   app.use(bodyParser.json());
   
+	const fs = require("fs");
+	const path = require("path");
+  const filePath = path.join(__dirname, "./files/database.json");
+
+  function writeToFile(data){
+		try{
+    	fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+			return true;
+		}
+		catch(err){
+			console.error("Error while writing to file");
+		}
+  }
+
+  function readTheFile(){
+    const data = fs.readFileSync(filePath, 'utf8');
+		try{
+				const jsonData = JSON.parse(data);
+				return jsonData;
+		}
+		catch(err){
+				console.error("Error parsing file data " + err);
+		}
+  }
+
+	let todoList = readTheFile();
+	// {"maxId": Number, "todos" : [{ "title": "Buy groceries", "completed": false, description: "I should buy groceries" }, ...]}
+	// [{ "title": "Buy groceries", "completed": false, description: "I should buy groceries" }, ...]
+
+  app.get("/todos", (req, res)=>{
+    todoList = readTheFile()["todos"];
+		res.json(todoList);
+  });
+
+  app.get("/todos/:id", (req, res)=>{
+		todoList = readTheFile()["todos"];
+		let id = req.params.id;
+		try{
+			id = parseInt(id);
+		}
+		catch(err){
+			console.error("Failed to parse id to int : ", err);
+			return res.status(400).send("Invalid type of id");
+		}
+		let todo = null;
+		for(let i=0; i<todoList.length; i++){
+			if(todoList[i].id == id){
+				todo = todoList[i];
+				break;
+			}
+		}
+
+		if(todo){
+			return res.status(200).json(todo)
+		}
+		console.log(`${id} not found while searching`);
+		return res.status(404).send("Not Found");
+  });
+
+  app.post("/todos", (req, res)=>{
+		maxId = readTheFile()["maxId"];
+		todoList = readTheFile()["todos"];
+		const todo = req.body;
+		todo.id = maxId + 1;
+		todoList.push(todo);
+		try{
+			writeToFile({"maxId" : todo.id, "todos" : todoList});
+			return res.status(201).json({"id" : todo.id});
+		}
+		catch(err){
+			console.error("Error while writing to file : " + err);
+			return res.status(500).send("Internal server error");
+		}
+  });
+
+	app.put("/todos/:id", (req, res)=>{
+		const todoListFile = readTheFile();
+		let id = req.params.id;
+		try{
+			id = parseInt(id);
+		}
+		catch(err){
+			console.error("Failed to parse id to int : ", err);
+			return res.status(400).send("Invalid type of id");
+		}
+		const todo = req.body;
+
+		let idx;
+		for(idx = 0;idx<todoListFile["todos"].length; idx++){
+			if(todoListFile["todos"][idx]["id"] == id){
+				break;
+			}
+		}
+
+		if(idx == todoListFile["todos"].length){
+			return res.status(404).send("Not Found");
+		}
+
+		if(todo["title"]){
+			todoListFile["todos"][idx]["title"] = todo["title"];
+		}
+		if(todo["completed"]){
+			todoListFile["todos"][idx]["completed"] = todo["completed"];
+		}
+		if(todo["description"]){
+			todoListFile["todos"][idx]["description"] = todo["description"];
+		}
+
+		try{
+			writeToFile(todoListFile);
+			return res.status(200).json({"modified_id" : todoListFile["todos"][idx]["id"]});
+		}
+		catch(err){
+			console.error("Error while writing to file : " + err);
+			return res.status(500).send("Internal server error");
+		}
+  });
+
+	app.delete("/todos/:id", (req, res)=>{
+		const todoListFile = readTheFile();
+		let id = req.params.id;
+		try{
+			id = parseInt(id);
+		}
+		catch(err){
+			console.error("Failed to parse id to int : ", err);
+			return res.status(400).send("Invalid type of id");
+		}
+
+		let idx = 0;
+		let flag = true;
+		const newTodo = [];
+		for(;idx<todoListFile["todos"].length; idx++){
+			if(todoListFile["todos"][idx]["id"] != id){
+				newTodo.push(todoListFile["todos"][idx]);
+			}
+			else{
+				flag = false;
+			}
+		}
+
+		if(flag){
+			return res.status(404).send("Not Found");
+		}
+
+		todoListFile["todos"] = newTodo;
+
+		try{
+			writeToFile(todoListFile);
+			return res.status(200).json({"deleted_id" : id});
+		}
+		catch(err){
+			console.error("Error while writing to file : " + err);
+			return res.status(500).send("Internal server error");
+		}		
+  });
+
+	app.all('*', (req, res) => {
+    res.status(404).send('Route not found');
+	});
+
+	// app.listen(3000);
+
   module.exports = app;

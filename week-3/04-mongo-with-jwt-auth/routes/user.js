@@ -1,26 +1,163 @@
 const { Router } = require("express");
 const router = Router();
 const userMiddleware = require("../middleware/user");
+const { User, Course } = require("../db");
+const jwt = require("jsonwebtoken");
 
 // User Routes
-router.post('/signup', (req, res) => {
+router.post('/signup', async (req, res) => {
     // Implement user signup logic
+    console.log("route: POST /user/signup");
+
+    const uname = req.body.username;
+    const pass = req.body.password;
+
+    const userExists = await User.findOne({ username: uname }).exec();
+    if (userExists) {
+        return res.status(400).json({ "msg": "Invalid username" });
+    }
+
+    const user = new User({
+        username: uname,
+        password: pass,
+        courses: []
+    });
+
+    try {
+        const savedUser = await user.save();
+        return res.status(200).json({ "message": "User created successfully" });
+    }
+    catch (err) {
+        console.log("Error while creating user", err);
+        return res.status(500).json({ "msg": "internal server error" });
+    }
 });
 
-router.post('/signin', (req, res) => {
+router.post('/signin', async (req, res) => {
     // Implement admin signup logic
+    console.log("route: POST /user/signin");
+
+    const { username, password } = req.headers;
+
+    try {
+        // Find the user by username
+        const IsValiUser = await User.findOne({ username: username });
+
+        if (!IsValiUser) {
+            return res.status(404).send({ message: 'User not found' });
+        }
+
+        // Check if the password matches
+        const isPasswordCorrect = IsValiUser.password === password; // Ideally, you'd hash the password and compare
+
+        if (!isPasswordCorrect) {
+            return res.status(401).send({ message: 'Invalid username or password' });
+        }
+
+        // Success
+        const token = jwt.sign({ username }, process.env.JWT_SECRET_KEY);
+
+        return res.status(200).send({ token });
+
+    } catch (err) {
+        // Handle any errors
+        console.error(err);
+        return res.status(500).send({ message: 'Internal server error' });
+    }
 });
 
-router.get('/courses', (req, res) => {
+router.get('/courses', async (req, res) => {
     // Implement listing all courses logic
+    console.log("route: GET /user/courses");
+
+    try {
+        const courses = await Course.find();
+        return res.status(200).json(courses);
+    }
+    catch (err) {
+        console.log("Error while retriving all courses", err);
+        return res.status(500).json({ "msg": "internal server error" });
+    }
 });
 
-router.post('/courses/:courseId', userMiddleware, (req, res) => {
+router.post('/courses/:courseId', userMiddleware, async (req, res) => {
     // Implement course purchase logic
+    console.log("route: POST /user/courses/:courseId");
+
+    const uname = req.headers.username; // provided by middleWare
+    const courseId = req.params.courseId;
+
+    let requestedCourse = undefined;
+    try {
+        requestedCourse = await Course.findOne({ _id: courseId });
+        if (!requestedCourse) {
+            return res.status(404).json({ "msg": "Course not found" });
+        }
+    }
+    catch (err) {
+        console.log("Error while requesting a course", err);
+        return res.status(500).json({ "msg": "internal server error" });
+    }
+
+    let currentUser = undefined;
+    try {
+        currentUser = await User.findOne({ username: uname });
+    }
+    catch (err) {
+        console.log("Error while requesting current user", err);
+        return res.status(500).json({ "msg": "internal server error" });
+    }
+
+    currentUser.courses.push(requestedCourse._id);
+    try {
+        const savedUser = await currentUser.save();
+        return res.status(200).json({ "message": "Course purchased successfully" });
+    }
+    catch (err) {
+        console.log("Error while creating user", err);
+        return res.status(500).json({ "msg": "internal server error" });
+    }
 });
 
-router.get('/purchasedCourses', userMiddleware, (req, res) => {
+router.get('/purchasedCourses', userMiddleware, async (req, res) => {
     // Implement fetching purchased courses logic
+    console.log("route: GET /user/purchasedCourses");
+
+    const username = req.headers.username;
+    let currentUser;
+
+    try {
+        // Find the user by username
+        currentUser = await User.findOne({ username: username });
+        if (!currentUser) {
+            return res.status(404).send({ message: 'User not found' });
+        }
+
+    } catch (err) {
+        // Handle any errors
+        console.error(err);
+        return res.status(500).send({ message: 'Internal server error' });
+    }
+
+    const purchasedCourses = [];
+    const courses = currentUser.courses;
+    for (let i = 0; i < courses.length; i++) {
+        try{
+            const course = await Course.findById(courses[i]);
+            if(course){
+                purchasedCourses.push(course);
+            }
+            else{
+                continue;
+            }
+        }
+        catch (err){
+            console.log("Error while looking for courses");
+            return res.status(500).json({ "msg": "internal server error" });
+        }
+    }
+
+    return res.status(200).json({ "purchasedCourses": purchasedCourses });
 });
 
 module.exports = router
